@@ -577,7 +577,8 @@ if __name__ == '__main__':
     # Generate the console and GUI entry points specified in the wheel
     if len(console) > 0:
         generated_console_scripts = maker.make_multiple(
-            ['%s = %s' % kv for kv in console.items()]
+            ['%s = %s' % kv for kv in console.items()],
+            {'no_appended_archive': True}
         )
         generated.extend(generated_console_scripts)
 
@@ -590,7 +591,7 @@ if __name__ == '__main__':
         generated.extend(
             maker.make_multiple(
                 ['%s = %s' % kv for kv in gui.items()],
-                {'gui': True}
+                {'gui': True, 'no_appended_archive': True}
             )
         )
 
