@@ -482,8 +482,7 @@ if __name__ == '__main__':
         generated.extend(
             maker.make_multiple(
                 ['%s = %s' % kv for kv in gui.items()],
-                {'gui': True},
-                {'no_appended_archive': True}
+                {'gui': True, 'no_appended_archive': True}
             )
         )
 
