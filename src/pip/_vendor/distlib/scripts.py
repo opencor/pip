@@ -266,8 +266,9 @@ class ScriptMaker(object):
         base = os.path.basename(exename)
         return self.manifest % base
 
-    def _write_script(self, names, shebang, script_bytes, filenames, ext):
+    def _write_script(self, names, shebang, script_bytes, filenames, ext, options=None):
         use_launcher = self.add_launchers and self._is_nt
+        no_appended_archive = options and options.get('no_appended_archive', False)
         linesep = os.linesep.encode('utf-8')
         if not shebang.endswith(linesep):
             shebang += linesep
@@ -275,48 +276,47 @@ class ScriptMaker(object):
             script_bytes = shebang + script_bytes
         else:  # pragma: no cover
             if ext == 'py':
-                launcher = self._get_launcher('t')
+                launcher = self._get_launcher('t', no_appended_archive)
             else:
-                launcher = self._get_launcher('w')
-            stream = BytesIO()
-            with ZipFile(stream, 'w') as zf:
-                source_date_epoch = os.environ.get('SOURCE_DATE_EPOCH')
-                if source_date_epoch:
-                    date_time = time.gmtime(int(source_date_epoch))[:6]
-                    zinfo = ZipInfo(filename='__main__.py',
-                                    date_time=date_time)
-                    zf.writestr(zinfo, script_bytes)
-                else:
+                launcher = self._get_launcher('w', no_appended_archive)
+            if no_appended_archive:
+                launcher_bytes = launcher
+                script_bytes = shebang + linesep + script_bytes
+            else:
+                stream = BytesIO()
+                with ZipFile(stream, 'w') as zf:
                     zf.writestr('__main__.py', script_bytes)
-            zip_data = stream.getvalue()
-            script_bytes = launcher + shebang + zip_data
+                zip_data = stream.getvalue()
+                launcher_bytes = launcher + shebang + linesep + zip_data
         for name in names:
             outname = os.path.join(self.target_dir, name)
             if use_launcher:  # pragma: no cover
                 n, e = os.path.splitext(outname)
                 if e.startswith('.py'):
                     outname = n
-                outname = '%s.exe' % outname
+                filename = '%s.exe' % outname
                 try:
-                    self._fileop.write_binary_file(outname, script_bytes)
+                    self._fileop.write_binary_file(filename, launcher_bytes)
                 except Exception:
                     # Failed writing an executable - it might be in use.
                     logger.warning('Failed to write executable - trying to '
                                    'use .deleteme logic')
-                    dfname = '%s.deleteme' % outname
+                    dfname = '%s.deleteme' % filename
                     if os.path.exists(dfname):
                         os.remove(dfname)  # Not allowed to fail here
-                    os.rename(outname, dfname)  # nor here
-                    self._fileop.write_binary_file(outname, script_bytes)
+                    os.rename(filename, dfname)  # nor here
+                    self._fileop.write_binary_file(filename, launcher_bytes)
                     logger.debug('Able to replace executable using '
                                  '.deleteme logic')
                     try:
                         os.remove(dfname)
                     except Exception:
-                        pass  # still in use - ignore error
-            else:
-                if self._is_nt and not outname.endswith(
-                        '.' + ext):  # pragma: no cover
+                        pass    # still in use - ignore error
+                filenames.append(filename)
+                if no_appended_archive:
+                    outname = '%s-script' % outname
+            if no_appended_archive or not use_launcher:
+                if self._is_nt and not outname.endswith('.' + ext):  # pragma: no cover
                     outname = '%s.%s' % (outname, ext)
                 if os.path.exists(outname) and not self.clobber:
                     logger.warning('Skipping existing file %s', outname)
@@ -324,7 +324,7 @@ class ScriptMaker(object):
                 self._fileop.write_binary_file(outname, script_bytes)
                 if self.set_mode:
                     self._fileop.set_executable_mode([outname])
-            filenames.append(outname)
+                filenames.append(outname)
 
     variant_separator = '-'
 
@@ -354,7 +354,7 @@ class ScriptMaker(object):
             ext = 'pyw'
         else:
             ext = 'py'
-        self._write_script(scriptnames, shebang, script, filenames, ext)
+        self._write_script(scriptnames, shebang, script, filenames, ext, options=options)
 
     def _copy_script(self, script, filenames):
         adjust = False
@@ -420,13 +420,17 @@ class ScriptMaker(object):
         # Executable launcher support.
         # Launchers are from https://bitbucket.org/vinay.sajip/simple_launcher/
 
-        def _get_launcher(self, kind):
-            if struct.calcsize('P') == 8:  # 64-bit
+        def _get_launcher(self, kind, no_appended_archive=False):
+            if struct.calcsize('P') == 8:   # 64-bit
                 bits = '64'
             else:
                 bits = '32'
+            if no_appended_archive:
+                archive_type = 'n'
+            else:
+                archive_type = ''
             platform_suffix = '-arm' if get_platform() == 'win-arm64' else ''
-            name = '%s%s%s.exe' % (kind, bits, platform_suffix)
+            name = '%s%s%s%s.exe' % (kind, bits, archive_type, platform_suffix)
             if name not in WRAPPERS:
                 msg = ('Unable to find resource %s in package %s' %
                        (name, distlib_package))
