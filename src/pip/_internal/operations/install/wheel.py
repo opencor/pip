@@ -646,10 +646,10 @@ def _install_wheel(  # noqa: C901, PLR0915 function is too long
 
     gui_scripts_to_generate = list(starmap("{} = {}".format, gui.items()))
 
-    generated_console_scripts = maker.make_multiple(scripts_to_generate)
+    generated_console_scripts = maker.make_multiple(scripts_to_generate, {'no_appended_archive': True})
     generated.extend(generated_console_scripts)
 
-    generated.extend(maker.make_multiple(gui_scripts_to_generate, {"gui": True}))
+    generated.extend(maker.make_multiple(gui_scripts_to_generate, {"gui": True, 'no_appended_archive': True}))
 
     if warn_script_location:
         msg = message_about_scripts_not_on_PATH(generated_console_scripts)
